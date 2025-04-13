@@ -1,0 +1,74 @@
+---
+- name: Clean and install kubectl & minikube
+  hosts: localhost
+  become: yes
+  vars:
+    kubectl_version: "v1.32.0"
+  tasks:
+    - name: Remove old kubectl if exists
+      file:
+        path: /usr/local/bin/kubectl
+        state: absent
+
+    - name: Remove old minikube if exists
+      file:
+        path: /usr/local/bin/minikube
+        state: absent
+
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - wget
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
+          - lsb-release
+          - conntrack
+        state: present
+        update_cache: yes
+
+    #### KUBECTL ####
+    - name: Download kubectl binary
+      get_url:
+        url: "https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/amd64/kubectl"
+        dest: /tmp/kubectl
+        mode: '0755'
+
+    - name: Download kubectl checksum
+      get_url:
+        url: "https://dl.k8s.io/release/{{ kubectl_version }}/bin/linux/amd64/kubectl.sha256"
+        dest: /tmp/kubectl.sha256
+
+    - name: Validate kubectl checksum
+      shell: "echo \"$(cat /tmp/kubectl.sha256)  /tmp/kubectl\" | sha256sum --check"
+      register: kubectl_checksum
+      failed_when: "'OK' not in kubectl_checksum.stdout"
+      changed_when: false
+
+    - name: Install kubectl
+      copy:
+        src: /tmp/kubectl
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+        owner: root
+        group: root
+
+    #### MINIKUBE ####
+    - name: Download latest minikube binary
+      get_url:
+        url: https://github.com/kubernetes/minikube/releases/latest/download/minikube-linux-amd64
+        dest: /tmp/minikube-linux-amd64
+        mode: '0755'
+
+    - name: Install minikube to /usr/local/bin
+      command: install /tmp/minikube-linux-amd64 /usr/local/bin/minikube
+
+    #### START MINIKUBE (Optional) ####
+    - name: Start minikube with Docker driver (non-root)
+      become: false
+      shell: |
+        minikube start 
+      environment:
+        CHANGE_MINIKUBE_NONE_USER: "true"
+      ignore_errors: yes
